@@ -97,6 +97,7 @@ symlinks needed for pairing (no .liza/ workspace):
 		configPath, _ := cmd.Flags().GetString("config")
 		entryPoint, _ := cmd.Flags().GetString("entry-point")
 		postCreateCmd, _ := cmd.Flags().GetString("post-worktree-cmd")
+		noTDD, _ := cmd.Flags().GetBool("no-tdd")
 		return commands.InitCommandWithConfig(commands.InitParams{
 			Description:     description,
 			SpecRef:         specRef,
@@ -104,6 +105,7 @@ symlinks needed for pairing (no .liza/ workspace):
 			EntryPoint:      entryPoint,
 			PostWorktreeCmd: postCreateCmd,
 			Agents:          agents,
+			NoTDD:           noTDD,
 			Stdin:           os.Stdin,
 		})
 	},
@@ -202,6 +204,7 @@ func init() {
 	initCmd.Flags().String("config", defaultPipelineConfigPath(), "path to pipeline YAML config file")
 	initCmd.Flags().String("entry-point", "", `entry-point name: "general-objective" or "detailed-spec" in default pipeline (default: auto-classified by orchestrator)`)
 	initCmd.Flags().String("post-worktree-cmd", "", "shell command to run after worktree creation (e.g. 'make setup')")
+	initCmd.Flags().Bool("no-tdd", false, "disable TDD enforcement (tests as separate tasks)")
 	initCmd.Flags().Bool("claude", false, "create CLAUDE.md symlink to ~/.liza/CORE.md")
 	initCmd.Flags().Bool("codex", false, "create AGENTS.md symlink to ~/.liza/CORE.md")
 	initCmd.Flags().Bool("gemini", false, "create GEMINI.md symlink to ~/.liza/CORE.md")

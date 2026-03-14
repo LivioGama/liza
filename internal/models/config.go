@@ -128,5 +128,15 @@ type Config struct {
 	ModeChangedBy           *string        `yaml:"mode_changed_by,omitempty"`
 	DiagnosticLogging       bool           `yaml:"diagnostic_logging,omitempty"`
 	PostWorktreeCmd         *string        `yaml:"post_worktree_cmd,omitempty"`
+	TDDEnabled              *bool          `yaml:"tdd_enabled,omitempty"`
 	Extra                   map[string]any `yaml:",inline"`
+}
+
+// IsTDDEnabled returns whether TDD enforcement is enabled.
+// Defaults to true when TDDEnabled is nil (backward compatibility).
+func (c *Config) IsTDDEnabled() bool {
+	if c.TDDEnabled == nil {
+		return true
+	}
+	return *c.TDDEnabled
 }

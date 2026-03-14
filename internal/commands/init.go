@@ -25,6 +25,7 @@ type InitParams struct {
 	ConfigPath       string   // --config: path to pipeline YAML
 	EntryPoint       string   // --entry-point: name of entry-point in config
 	PostWorktreeCmd  string   // --post-worktree-cmd: shell command to run after worktree creation
+	NoTDD            bool     // --no-tdd: disable TDD enforcement
 	Agents           []string // --claude, --codex, --gemini, --mistral
 	Stdin            io.Reader
 	ForceInteractive bool // bypass TTY check (for testing)
@@ -613,6 +614,11 @@ func InitCommandWithConfig(params InitParams) error {
 			Mode:                     models.SystemModeRunning,
 			PostWorktreeCmd:          stringPtrOrNil(postWorktreeCmd),
 		},
+	}
+
+	if params.NoTDD {
+		tddEnabled := false
+		state.Config.TDDEnabled = &tddEnabled
 	}
 
 	// Write state file
