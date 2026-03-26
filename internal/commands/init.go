@@ -13,7 +13,6 @@ import (
 
 	"github.com/liza-mas/liza/internal/db"
 	"github.com/liza-mas/liza/internal/embedded"
-	"github.com/liza-mas/liza/internal/interactive"
 	"github.com/liza-mas/liza/internal/models"
 	"github.com/liza-mas/liza/internal/paths"
 	"github.com/liza-mas/liza/internal/pipeline"
@@ -32,9 +31,9 @@ type InitParams struct {
 	ContractAction   string // "global", "rename", "skip", or "" (default behavior)
 }
 
-// initAgentRepoSymlinks maps agent flag names to the repo-root symlink filename.
+// InitAgentRepoSymlinks maps agent flag names to the repo-root symlink filename.
 // These symlinks point to ~/.liza/CORE.md and enable pairing mode.
-var initAgentRepoSymlinks = map[string]string{
+var InitAgentRepoSymlinks = map[string]string{
 	"claude": "CLAUDE.md",
 	"codex":  "AGENTS.md",
 	"gemini": "GEMINI.md",
@@ -81,7 +80,7 @@ func InitPairingCommand(params InitPairingParams) error {
 	hasClaude := false
 	hasMistral := false
 	for _, agent := range params.Agents {
-		if name, ok := initAgentRepoSymlinks[agent]; ok {
+		if name, ok := InitAgentRepoSymlinks[agent]; ok {
 			repoRootNames = append(repoRootNames, name)
 		}
 		switch agent {
@@ -123,7 +122,6 @@ func InitPairingCommand(params InitPairingParams) error {
 		}
 	}
 
-	interactive.PrintPostInitSummary("pairing", params.Agents)
 	return nil
 }
 
@@ -150,7 +148,7 @@ func CheckContractConfigured(projectRoot, cliName string) string {
 		effectiveCLI = "claude"
 	}
 
-	fileName, ok := initAgentRepoSymlinks[effectiveCLI]
+	fileName, ok := InitAgentRepoSymlinks[effectiveCLI]
 	if !ok {
 		// Mistral uses ~/.vibe/prompts/liza.md instead of a repo-root symlink
 		if effectiveCLI == "mistral" {
@@ -250,13 +248,23 @@ func createContractSymlinksFiltered(projectRoot, contractTarget string, names []
 
 		if contractAction == "rename" {
 			bakPath := repoPath + ".bak"
+			for i := 1; ; i++ {
+				if _, err := os.Lstat(bakPath); os.IsNotExist(err) {
+					break
+				}
+				bakPath = fmt.Sprintf("%s.bak.%d", repoPath, i)
+			}
 			if err := os.Rename(repoPath, bakPath); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to rename %s to %s: %v\n", name, bakPath, err)
 				continue
 			}
-			fmt.Printf("%s: renamed existing to %s.bak\n", name, name)
+			fmt.Printf("%s: renamed existing to %s\n", name, filepath.Base(bakPath))
 			if err := os.Symlink(contractTarget, repoPath); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to create %s symlink: %v\n", name, err)
+				// Restore original to avoid leaving the user with no file at the path
+				if restoreErr := os.Rename(bakPath, repoPath); restoreErr != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to restore %s from backup: %v\n", name, restoreErr)
+				}
 			} else {
 				fmt.Printf("%s → %s\n", name, contractTarget)
 			}
@@ -517,7 +525,7 @@ func InitCommandWithConfig(params InitParams) error {
 	if len(params.Agents) > 0 {
 		var names []string
 		for _, agent := range params.Agents {
-			if name, ok := initAgentRepoSymlinks[agent]; ok {
+			if name, ok := InitAgentRepoSymlinks[agent]; ok {
 				names = append(names, name)
 			}
 		}
@@ -690,7 +698,6 @@ func InitCommandWithConfig(params InitParams) error {
 	fmt.Println("\nNote: MCP tools and personal permissions belong in ~/.claude/settings.json (global).")
 	fmt.Println("See: contracts/contract-activation.md § Global settings")
 
-	interactive.PrintPostInitSummary("full", params.Agents)
 	return nil
 }
 

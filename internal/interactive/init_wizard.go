@@ -1,11 +1,13 @@
 package interactive
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/charmbracelet/huh"
+	"github.com/liza-mas/liza/internal/commands"
 )
 
 // InitWizardResult holds all choices made during the interactive init wizard.
@@ -18,15 +20,8 @@ type InitWizardResult struct {
 	ContractAction string   // "global", "rename", "skip" (only if conflict detected)
 }
 
-// agentRepoSymlinks maps agent names to repo-root contract filenames.
-var agentRepoSymlinks = map[string]string{
-	"claude": "CLAUDE.md",
-	"codex":  "AGENTS.md",
-	"gemini": "GEMINI.md",
-}
-
 // RunInitWizard runs the interactive init wizard and returns the user's choices.
-// Returns nil result if user aborts (Ctrl+C / Esc).
+// Returns (nil, nil) if user aborts (Ctrl+C / Esc).
 func RunInitWizard(projectRoot string) (*InitWizardResult, error) {
 	result := &InitWizardResult{
 		SpecRef: "specs/vision.md",
@@ -42,7 +37,7 @@ func RunInitWizard(projectRoot string) (*InitWizardResult, error) {
 		Value(&result.Mode).
 		Run()
 	if err != nil {
-		return nil, err
+		return nil, abortOrError(err)
 	}
 
 	// Screen 2: Agent selection
@@ -63,7 +58,7 @@ func RunInitWizard(projectRoot string) (*InitWizardResult, error) {
 		}).
 		Run()
 	if err != nil {
-		return nil, err
+		return nil, abortOrError(err)
 	}
 
 	// Screen 3 (full mode only): Project details
@@ -95,32 +90,32 @@ func RunInitWizard(projectRoot string) (*InitWizardResult, error) {
 			),
 		).Run()
 		if err != nil {
-			return nil, err
+			return nil, abortOrError(err)
 		}
 	}
 
 	// Screen 4: Contract conflict resolution (if needed)
 	if err := resolveContractConflicts(projectRoot, result); err != nil {
-		return nil, err
+		return nil, abortOrError(err)
 	}
 
 	return result, nil
 }
 
-// resolveContractConflicts checks if any contract files conflict and prompts the user.
-func resolveContractConflicts(projectRoot string, result *InitWizardResult) error {
-	if projectRoot == "" {
+// abortOrError returns nil for user abort (Ctrl+C / Esc), passes through other errors.
+func abortOrError(err error) error {
+	if errors.Is(err, huh.ErrUserAborted) {
 		return nil
 	}
+	return err
+}
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return nil // non-fatal, let the init command handle it
-	}
-	contractTarget := filepath.Join(homeDir, ".liza", "CORE.md")
-
-	for _, agent := range result.Agents {
-		fileName, ok := agentRepoSymlinks[agent]
+// DetectContractConflict checks whether any selected agent's contract file
+// conflicts with an existing non-Liza file at the project root.
+// Returns the conflicting filename (e.g. "CLAUDE.md") or "" if no conflict.
+func DetectContractConflict(projectRoot string, agents []string, contractTarget string) string {
+	for _, agent := range agents {
+		fileName, ok := commands.InitAgentRepoSymlinks[agent]
 		if !ok {
 			continue // mistral doesn't use repo-root symlinks
 		}
@@ -141,25 +136,44 @@ func resolveContractConflicts(projectRoot string, result *InitWizardResult) erro
 			}
 		}
 
-		// Conflict detected — ask user
-		var action string
-		err = huh.NewSelect[string]().
-			Title(fmt.Sprintf("%s already exists. Where should Liza place its contract?", fileName)).
-			Options(
-				huh.NewOption(fmt.Sprintf("Use global config instead (keeps your existing %s)", fileName), "global"),
-				huh.NewOption(fmt.Sprintf("Rename existing to %s.bak and place Liza contract at repo root", fileName), "rename"),
-				huh.NewOption("Skip — don't create this contract", "skip"),
-			).
-			Value(&action).
-			Run()
-		if err != nil {
-			return err
-		}
+		return fileName
+	}
+	return ""
+}
 
-		// Use the first conflict's action for all (they'll likely all have the same issue)
-		result.ContractAction = action
+// resolveContractConflicts checks if any contract files conflict and prompts the user.
+func resolveContractConflicts(projectRoot string, result *InitWizardResult) error {
+	if projectRoot == "" {
 		return nil
 	}
 
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil // non-fatal, let the init command handle it
+	}
+	contractTarget := filepath.Join(homeDir, ".liza", "CORE.md")
+
+	conflicting := DetectContractConflict(projectRoot, result.Agents, contractTarget)
+	if conflicting == "" {
+		return nil
+	}
+
+	// Conflict detected — ask user
+	var action string
+	err = huh.NewSelect[string]().
+		Title(fmt.Sprintf("%s already exists. Where should Liza place its contract?", conflicting)).
+		Options(
+			huh.NewOption(fmt.Sprintf("Use global config instead (keeps your existing %s)", conflicting), "global"),
+			huh.NewOption(fmt.Sprintf("Rename existing to %s.bak and place Liza contract at repo root", conflicting), "rename"),
+			huh.NewOption("Skip — don't create this contract", "skip"),
+		).
+		Value(&action).
+		Run()
+	if err != nil {
+		return err
+	}
+
+	// Use the first conflict's action for all (they'll likely all have the same issue)
+	result.ContractAction = action
 	return nil
 }
