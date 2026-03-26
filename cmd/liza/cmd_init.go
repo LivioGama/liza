@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/liza-mas/liza/internal/commands"
+	"github.com/liza-mas/liza/internal/interactive"
 	"github.com/liza-mas/liza/internal/paths"
 	"github.com/spf13/cobra"
 )
@@ -79,6 +80,40 @@ symlinks needed for pairing (no .liza/ workspace):
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		agents := collectAgentFlags(cmd)
+
+		// Interactive wizard: no args, no flags, TTY
+		if len(args) == 0 && len(agents) == 0 {
+			if !interactive.IsInteractive() {
+				return fmt.Errorf("requires a description argument or at least one agent flag (--claude, --codex, --gemini, --mistral)\nSee: liza init --help")
+			}
+
+			// Resolve project root for conflict detection
+			var projectRoot string
+			if lizaPaths, err := paths.LizaPathsFromGit(); err == nil {
+				projectRoot = lizaPaths.ProjectRoot()
+			}
+
+			result, err := interactive.RunInitWizard(projectRoot)
+			if err != nil {
+				return err
+			}
+
+			if result.Mode == "pairing" {
+				return commands.InitPairingCommand(commands.InitPairingParams{
+					Agents:         result.Agents,
+					Stdin:          os.Stdin,
+					ContractAction: result.ContractAction,
+				})
+			}
+			return commands.InitCommandWithConfig(commands.InitParams{
+				Description:    result.Description,
+				SpecRef:        result.SpecRef,
+				EntryPoint:     result.EntryPoint,
+				Agents:         result.Agents,
+				Stdin:          os.Stdin,
+				ContractAction: result.ContractAction,
+			})
+		}
 
 		// Pairing mode: agent flags without description
 		if len(args) == 0 {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/liza-mas/liza/internal/db"
 	"github.com/liza-mas/liza/internal/embedded"
+	"github.com/liza-mas/liza/internal/interactive"
 	"github.com/liza-mas/liza/internal/models"
 	"github.com/liza-mas/liza/internal/paths"
 	"github.com/liza-mas/liza/internal/pipeline"
@@ -27,7 +28,8 @@ type InitParams struct {
 	PostWorktreeCmd  string   // --post-worktree-cmd: shell command to run after worktree creation
 	Agents           []string // --claude, --codex, --gemini, --mistral
 	Stdin            io.Reader
-	ForceInteractive bool // bypass TTY check (for testing)
+	ForceInteractive bool   // bypass TTY check (for testing)
+	ContractAction   string // "global", "rename", "skip", or "" (default behavior)
 }
 
 // initAgentRepoSymlinks maps agent flag names to the repo-root symlink filename.
@@ -48,8 +50,9 @@ var globalFallbacks = map[string]string{
 
 // InitPairingParams holds the parameters for InitPairingCommand.
 type InitPairingParams struct {
-	Agents []string  // agent names (e.g. "claude", "codex", "gemini", "mistral")
-	Stdin  io.Reader // input for interactive prompts (nil = os.Stdin)
+	Agents         []string  // agent names (e.g. "claude", "codex", "gemini", "mistral")
+	Stdin          io.Reader // input for interactive prompts (nil = os.Stdin)
+	ContractAction string    // "global", "rename", "skip", or "" (default behavior)
 }
 
 // InitPairingCommand creates agent-specific contract symlinks without
@@ -104,7 +107,7 @@ func InitPairingCommand(params InitPairingParams) error {
 	}
 
 	if len(repoRootNames) > 0 {
-		createContractSymlinksFiltered(projectRoot, coreFile, repoRootNames)
+		createContractSymlinksFiltered(projectRoot, coreFile, repoRootNames, params.ContractAction)
 	}
 
 	// Write/merge .claude/settings.json and deploy hooks
@@ -120,6 +123,7 @@ func InitPairingCommand(params InitPairingParams) error {
 		}
 	}
 
+	interactive.PrintPostInitSummary("pairing", params.Agents)
 	return nil
 }
 
@@ -189,7 +193,11 @@ func CheckContractConfigured(projectRoot, cliName string) string {
 // createContractSymlinksFiltered creates repo-root symlinks to the contract.
 // When a non-Liza file already exists at the repo root, it falls back to the
 // CLI's global config directory (e.g. ~/.claude/CLAUDE.md).
-func createContractSymlinksFiltered(projectRoot, contractTarget string, names []string) {
+//
+// The contractAction parameter controls conflict resolution when set by the
+// interactive wizard: "rename" backs up the existing file, "global" uses the
+// global fallback, "skip" skips creation. Empty string uses default behavior.
+func createContractSymlinksFiltered(projectRoot, contractTarget string, names []string, contractAction string) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: cannot determine home directory: %v\n", err)
@@ -234,7 +242,28 @@ func createContractSymlinksFiltered(projectRoot, contractTarget string, names []
 			continue
 		}
 
-		// Step 3: repo root occupied by non-Liza file → try global fallback
+		// Step 3: repo root occupied by non-Liza file — apply contract action
+		if contractAction == "skip" {
+			fmt.Printf("%s: skipped (user choice)\n", name)
+			continue
+		}
+
+		if contractAction == "rename" {
+			bakPath := repoPath + ".bak"
+			if err := os.Rename(repoPath, bakPath); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to rename %s to %s: %v\n", name, bakPath, err)
+				continue
+			}
+			fmt.Printf("%s: renamed existing to %s.bak\n", name, name)
+			if err := os.Symlink(contractTarget, repoPath); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to create %s symlink: %v\n", name, err)
+			} else {
+				fmt.Printf("%s → %s\n", name, contractTarget)
+			}
+			continue
+		}
+
+		// Default behavior (contractAction == "" or "global"): try global fallback
 		if !hasGlobal {
 			fmt.Fprintf(os.Stderr, "Warning: %s already exists and no global fallback configured.\n", name)
 			continue
@@ -493,7 +522,7 @@ func InitCommandWithConfig(params InitParams) error {
 			}
 		}
 		if len(names) > 0 {
-			createContractSymlinksFiltered(lizaPaths.ProjectRoot(), filepath.Join(globalDir, "CORE.md"), names)
+			createContractSymlinksFiltered(lizaPaths.ProjectRoot(), filepath.Join(globalDir, "CORE.md"), names, params.ContractAction)
 		}
 	}
 
@@ -661,6 +690,7 @@ func InitCommandWithConfig(params InitParams) error {
 	fmt.Println("\nNote: MCP tools and personal permissions belong in ~/.claude/settings.json (global).")
 	fmt.Println("See: contracts/contract-activation.md § Global settings")
 
+	interactive.PrintPostInitSummary("full", params.Agents)
 	return nil
 }
 

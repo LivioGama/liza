@@ -14,10 +14,12 @@ NC='\033[0m' # No Color
 REPO="liza-mas/liza"
 BINARY_NAME="liza"
 if [ -z "${INSTALL_DIR:-}" ]; then
-    if echo "$PATH" | tr ':' '\n' | grep -qxF "$HOME/.local/bin"; then
-        INSTALL_DIR="$HOME/.local/bin"
-    else
-        INSTALL_DIR="/usr/local/bin"
+    INSTALL_DIR="$HOME/.local/bin"
+    mkdir -p "$INSTALL_DIR"
+    if ! echo "$PATH" | tr ':' '\n' | grep -qxF "$INSTALL_DIR"; then
+        echo -e "${YELLOW}Note: $INSTALL_DIR is not in your PATH${NC}"
+        echo "Add to your shell profile:  export PATH=\"\$HOME/.local/bin:\$PATH\""
+        echo ""
     fi
 fi
 
