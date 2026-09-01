@@ -1,26 +1,6 @@
 {
   "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-context.sh\"",
-            "timeout": 5,
-            "type": "command"
-          }
-        ]
-      }
-    ],
     "PreToolUse": [
-      {
-        "hooks": [
-          {
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-init.sh\"",
-            "timeout": 5,
-            "type": "command"
-          }
-        ]
-      },
       {
         "matcher": "Bash",
         "hooks": [

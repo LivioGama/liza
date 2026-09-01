@@ -81,30 +81,21 @@ SESSION EXIT CODES (observed by supervisor — not Bash commands):
 TIMESTAMPS: YYYY-MM-DDTHH:MM:SSZ (ISO 8601 UTC). Generate: date -u +%Y-%m-%dT%H:%M:%SZ
 
 FIRST ACTIONS:
-⚠️  A session-init hook BLOCKS all non-read tool calls until the contract files are read.
-    Any Bash command other than cat/head/tail/sed/wc will be rejected.
-    Use file-read tools (Read, filesystem MCP) or cat — nothing else until step 1 is done.
-1. Read these contract files before anything else:
-   - ~/.liza/MULTI_AGENT_MODE.md
-   - ~/.liza/AGENT_TOOLS.md
-   - {{.ProjectRoot}}/GUARDRAILS.md   (may be absent)
-   Read all three in ONE call via filesystem/read_multiple_files or equivalent tolerating per-path errors,
-   or read them one at a time sequentially. Do NOT use cat if file-read tools are available.
-   Do NOT pre-check existence with Bash as a separate step; use a tolerant multi-read or sequential reads.
-   The session-init hook only tolerates a narrow GUARDRAILS.md compatibility wrapper.
+The contract files (CORE.md, mode contract, AGENT_TOOLS.md) are included inline in the system prompt — no file reads needed for initialization.
 {{- if .TaskID}}
-2. Query your assigned task: liza get {{.TaskID}} --json
+1. Query your assigned task: liza get {{.TaskID}} --json
 {{- else}}
-2. Use the orchestrator dashboard and active-task digest below first.
+1. Use the orchestrator dashboard and active-task digest below first.
    Query specific tasks with liza get <task-id> --json.
-   Refresh active summaries only if the prompt context appears stale.
 {{- end}}
-3. Read the current spec reference:
+   Refresh active summaries only if the prompt context appears stale.
+2. Read the current spec reference:
 {{- if .TaskID}}
-   Use the assigned task JSON from step 2. Read its `spec_ref`; if it is repo-relative and the task has a worktree, read it from that worktree. If `spec_ref` is empty, run `liza get goal.spec_ref --json` and read that returned ref.
+   Use the assigned task JSON from step 1. Read its `spec_ref`; if it is repo-relative and the task has a worktree, read it from that worktree. If `spec_ref` is empty, run `liza get goal.spec_ref --json` and read that returned ref.
 {{- else}}
    Run `liza get goal.spec_ref --json`, then read the returned ref from the project root.
 {{- end}}
+3. Read {{.ProjectRoot}}/GUARDRAILS.md if it exists (project-specific rules not in the system prompt).
 4. Execute your role's protocol
 
 {{- if .ScipSearchIndexes }}
